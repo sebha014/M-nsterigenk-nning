@@ -1,21 +1,16 @@
 #
-# Makefile för bildjämförelse
+# Makefile för mönstermatchning
 #
 
-CXX       := g++ -std=c++20 -pipe
-OPTIMIZE  := -O3
-FLAGS     := $(OPTIMIZE) -Wall -Wextra -g
-LDFLAGS   := -pthread
-LIBFLAGS = -lsfml-graphics -lsfml-window -lsfml-system -lole32 -luuid -lgdi32
-SFML_EXEC := slow fast
-HASH_EXEC := hash_test
-EXEC      := $(HASH_EXEC) $(SFML_EXEC)
-MAKEDEPS  := -MMD -MP
+CXX      := g++ -std=c++20 -pipe
+OPTIMIZE := -O3
+FLAGS    := $(OPTIMIZE) -Wall -Wextra -g
+LDFLAGS  := -pthread -lsfml-graphics -lsfml-window -lsfml-system
+EXEC     := brute fast
+MAKEDEPS := -MMD -MP
 
--include extra.mk
-
-OBJECTS   := $(patsubst %.cpp,build/%.o,$(wildcard *.cpp))
-DEPS      := $(patsubst %.o,%.d,$(OBJECTS))
+OBJECTS  := $(patsubst %.cpp,build/%.o,$(wildcard *.cpp))
+DEPS     := $(patsubst %.o,%.d,$(OBJECTS))
 SHAREDOBJECTS := $(filter-out $(addprefix build/,$(addsuffix .%,$(EXEC))),$(OBJECTS))
 
 $(shell mkdir -p build)
@@ -23,10 +18,7 @@ $(shell mkdir -p build)
 .PHONY: all clean zap
 all: $(EXEC)
 
-$(SFML_EXEC): %: build/%.o $(SHAREDOBJECTS)
-	$(CXX) $(FLAGS) -o $@ $^ $(LDFLAGS) $(LIBFLAGS)
-
-$(HASH_EXEC): %: build/%.o
+$(EXEC): %: build/%.o $(SHAREDOBJECTS)
 	$(CXX) $(FLAGS) -o $@ $^ $(LDFLAGS)
 
 $(OBJECTS): build/%.o: %.cpp

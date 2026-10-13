@@ -1,6 +1,5 @@
+brute
 fast
-slow
-hash_test
 build/
 *.o
 *~

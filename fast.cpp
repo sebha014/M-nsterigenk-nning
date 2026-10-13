@@ -1,170 +1,150 @@
-#include "image.h"
-#include "window.h"
-#include "load.h"
-#include <chrono>
-#include <iostream>
-#include <string>
-#include <vector>
-#include <unordered_map>
-#include "hash_map.h"
-
-using std::cout;
-using std::cerr;
-using std::endl;
-using std::string;
-using std::vector;
-using std::unordered_map;
-
-/**
- * Class that stores a summary of an image.
+/*
+ * fast < input.txt
  *
- * This summary is intended to contain a high-level representation of the
- * important parts of an image. I.e. it shall contain what a human eye would
- * find relevant, while ignoring things that the human eye would find
- * irrelevant.
- *
- * To approximate human perception, we store a series of booleans that indicate
- * if the brightness of the image has increased or not. We do this for all
- * horizontal lines and vertical lines in a downsampled version of the image.
- *
- * See the lab instructions for more details.
- *
- * Note: You will need to use this data structure as the key in a hash table. As
- * such, you will need to implement equality checks and a hash function for this
- * data structure.
+ * Compute and plot all line segments involving 4 points in input.txt
  */
-/////////////////////////////////
-class Image_Summary {
-public:
-    // Horizontal increases in brightness.
-    vector<bool> horizontal;
 
-    // Vertical increases in brightness.
-    vector<bool> vertical;
+#include <iostream>
+#include <algorithm>
+#include <vector>
+#include <chrono>
+#include <cmath>
+#include <utility>
+#include "point.h"
+#include "window.h"
 
-    //Jämför två summaries och kontrollerar att både horizontal och vertical är lika
-    bool operator==(const Image_Summary &other) const {
-        return horizontal == other.horizontal &&
-               vertical == other.vertical;
+using namespace std;
+
+int main(int argc, const char* argv[]) {
+    WindowPtr window = create_window(argc, argv);
+    if (!window)
+        return 1;
+
+    // The array of points
+    vector<Point> points;
+
+    // Read tolerance from cin
+    double tolerance{};
+    cin >> tolerance;
+
+    // Read points from cin
+    int N{};
+    cin >> N;
+
+    for (int i{0}; i < N; ++i) {
+        double x{}, y{};
+        cin >> x >> y;
+        points.push_back(Point{x, y});
     }
-};
-///////////////////////////////////////////////
-//Hashfunktionen för image summary så den kan använads som nyckel i hashtabell
-template <>
-class std::hash<Image_Summary> {
-public:
-    size_t operator()(const Image_Summary &to_hash) const {
-        size_t result = 0;
 
-        //Bygger hasrvärdet från horisontell information
-        for (bool value : to_hash.horizontal) {
-            result = (result << 1) | value;
+    // draw points to screen all at once
+    window->draw_points(points);
+
+    auto begin = chrono::high_resolution_clock::now();
+
+    //////////////////////////////////////////////////////////////////////////////
+    // Draw any lines that you find in 'points' using the function 'window->draw_line'.
+    //////////////////////////////////////////////////////////////////////////////
+
+    ///// NY KOD: Vinkelkonstant för att behandla samma linje oberoende av riktning.
+    const double pi = acos(-1.0);
+
+    ///// NY KOD: Gör om vinkeln till intervallet [0, pi).
+    auto lineAngle = [pi](double angle) {
+        angle = fmod(angle, pi);
+        if (angle < 0) {
+            angle += pi;
+        }
+        return angle;
+    };
+
+    ///// NY KOD: Jämför vinklar med tolerans, även nära gränsen 0 och pi.
+    auto sameLineAngle = [pi, tolerance](double a, double b) {
+        double difference = abs(a - b);
+
+        return sameSlope(a, b, tolerance) ||
+               abs(difference - pi) <= tolerance;
+    };
+
+    ///// NY KOD: Välj varje punkt som utgångspunkt.
+    for (int o{0}; o < N; ++o) {
+        Point origin = points[o];
+
+        ///// NY KOD: Sortera de andra punkterna efter linjevinkeln från origin.
+        vector<pair<double, Point>> sorted_points;
+
+        for (int p{0}; p < N; ++p) {
+            if (p != o) {
+                double angle = lineAngle(origin.slopeTo(points[p]));
+                sorted_points.push_back({angle, points[p]});
+            }
         }
 
-        //samma med vertikala infon
-        for (bool value : to_hash.vertical) {
-            result = (result << 1) | value;
+        sort(sorted_points.begin(), sorted_points.end(),
+             [](const auto& a, const auto& b) {
+                 return a.first < b.first;
+             });
+
+        ///// NY KOD: Hitta grupper med liknande vinklar.
+        vector<vector<Point>> groups;
+        int i{0};
+        int size = static_cast<int>(sorted_points.size());
+
+        while (i < size) {
+            int j{i + 1};
+
+            while (j < size &&
+                   sameLineAngle(sorted_points[i].first,
+                                 sorted_points[j].first)) {
+                ++j;
+            }
+
+            vector<Point> group;
+
+            for (int k{i}; k < j; ++k) {
+                group.push_back(sorted_points[k].second);
+            }
+
+            groups.push_back(group);
+            i = j;
         }
 
-        return result;
-    }
-};
+        ///// NY KOD: Slå ihop grupper som ligger nära gränsen 0 och pi.
+        if (groups.size() > 1 &&
+            sameLineAngle(sorted_points.front().first,
+                          sorted_points.back().first)) {
+            groups.front().insert(groups.front().end(),
+                                  groups.back().begin(),
+                                  groups.back().end());
+            groups.pop_back();
+        }
 
-////////////////////////////////////////////////
-// Compute an Image_Summary from an image. This is described in detail in the
-// lab instructions.
-//Skapar en förenklad summary av bilden för att hitta bilder som liknar varandra
-Image_Summary compute_summary(const Image &image) {
-    const size_t summary_size = 8;
-    Image_Summary result;
+        ///// NY KOD: Minst tre andra punkter krävs för ett linjesegment.
+        for (const auto& group : groups) {
+            if (group.size() >= 3) {
+                vector<Point> line_points = group;
+                line_points.push_back(origin);
 
-    Image small = image.shrink(summary_size + 1, summary_size + 1);
+                ///// NY KOD: Sortera punkterna för att hitta den minsta.
+                sort(line_points.begin(), line_points.end());
 
-    //Kollar ljusstyrkan ökar mellan pixlar horisontellt
-    for (size_t y = 0; y < summary_size + 1; y++) {
-    for (size_t x = 0; x < summary_size; x++) {
-        result.horizontal.push_back(
-            small.pixel(x + 1, y).brightness() >
-            small.pixel(x, y).brightness()
-        );
-    }
-}
-
-    //Kollar ljusstyrkan ändras pixlar vertikalt
-    for (size_t x = 0; x < summary_size + 1; x++) {
-    for (size_t y = 0; y < summary_size; y++) {
-        result.vertical.push_back(
-            small.pixel(x, y + 1).brightness() >
-            small.pixel(x, y).brightness()
-        );
-    }
-}
-
-    return result;
-}
-////////////////////////////////////////////////////////
-
-int main(int argc, const char *argv[]) {
-    WindowPtr window = Window::create(argc, argv);
-
-    if (argc < 2) {
-        cerr << "Usage: " << argv[0] << " [--nopause] [--nowindow] <directory>" << endl;
-        cerr << "Missing directory containing files!" << endl;
-        return 1;
+                ///// NY KOD: Rita bara när origin är linjens minsta punkt.
+                if (line_points.front().x == origin.x &&
+                    line_points.front().y == origin.y) {
+                    window->draw_line(line_points);
+                }
+            }
+        }
     }
 
-    vector<string> files = list_files(argv[1]);
-    cout << "Found " << files.size() << " image files." << endl;
-
-    if (files.size() <= 0) {
-        cerr << "No files found! Make sure you entered a proper path!" << endl;
-        return 1;
-    }
-
-    auto begin = std::chrono::high_resolution_clock::now();
-
-    /**
-     * TODO:
-     * - For each file:
-     *   - Load the file
-     *   - Compute its summary
-     */
-
-     //Hasttabellen använder Image_Summary som nyckel + lagrar lista med bilder för dens summary
-    Hash_Map<Image_Summary, vector<string>> map;
-
-    //Går igenom alla bilder
-    for (const string &file : files) {
-        //löser in bild
-        Image image = load_image(file);
-
-        //Skapar en förneklad summary av bilden
-        Image_Summary summary = compute_summary(image);
-
-        //Lägger bilden i gruppen med samma summary (likhet)
-        map[summary].push_back(file);
-    }
-
-
-    auto end = std::chrono::high_resolution_clock::now();
-    cout << "Total time: "
-         << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count()
+    auto end = chrono::high_resolution_clock::now();
+    cout << "Computing line segments took "
+         << std::chrono::duration_cast<chrono::milliseconds>(end - begin).count()
          << " milliseconds." << endl;
 
-    /**
-     * TODO:
-     * - Display sets of files with equal summaries
-     */
+    // wait for user to terminate program
+    window->run();
 
-     //Går igenom alla grupper i hashtabellen
-    for (auto it = map.begin(); it != map.end(); ++it) {
-        auto [summary, filenames] = *it;
-
-        //Om minst två bilder har samma summary -> dubletter
-        if (filenames.size() >= 2) {
-            window->report_match(filenames);
-        }      
-    }
-    
     return 0;
 }
+

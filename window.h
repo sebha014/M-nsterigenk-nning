@@ -1,42 +1,38 @@
 #pragma once
-#include "image.h"
-#include <string>
+#include <vector>
 #include <memory>
+#include "point.h"
 
 /**
- * Window for showing images.
+ * Window allowing us to draw points and lines easily.
  */
 class Window {
 public:
     // Create.
-    Window();
+    Window() = default;
 
-    // Virtual destructor.
+    // No copy.
+    Window(const Window &) = delete;
+    Window &operator =(const Window &) = delete;
+
+    // Destructor.
     virtual ~Window() = default;
 
-    // Disable pausing globally.
-    bool disable_pause;
+    // Draw a number of points.
+    virtual void draw_points(const std::vector<Point> &points) = 0;
 
-    // Create.
-    static std::unique_ptr<Window> create(int &argc, const char **argv);
+    // Draw a line.
+    virtual void draw_line(Point from, Point to) = 0;
 
-    // Show a single image.
-    void show_single(const Image &image, bool pause = true);
-    void show_single(const std::string &caption, const Image &image, bool pause = true);
+    // Draw a line from a number of points that are assumed to be on the same line.
+    // Determines which points are furthest apart and draws a single line.
+    void draw_line(std::vector<Point> points);
 
-    // Show two images side-by-side.
-    void show_pair(const Image &image1, const Image &image2, bool pause = true);
-    void show_pair(const std::string &caption1, const Image &image1,
-                const std::string &caption2, const Image &image2, bool pause = true);
-
-    // Show multiple images side-by-side.
-    void show_multiple(const std::vector<Image> &images, bool pause = true);
-    virtual void show_multiple(const std::vector<std::string> &captions,
-                            const std::vector<Image> &images,
-                            bool pause = true) = 0;
-
-    // Report a match between two images.
-    void report_match(const std::vector<std::string> &files);
+    // Run the main-loop until the window is closed.
+    virtual void run() = 0;
 };
 
 using WindowPtr = std::unique_ptr<Window>;
+
+// Create a window given the command line.
+WindowPtr create_window(int argc, const char **argv);

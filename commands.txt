@@ -1,0 +1,7 @@
+make brute
+./brute --text < data/input20.txt
+./brute --text < data/grid4x4.txt
+
+make fast
+./fast --text < data/input20.txt
+./fast --text < data/grid4x4.txt
